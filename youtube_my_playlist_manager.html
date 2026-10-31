@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube My Playlist Manager</title>
+    <!-- Tailwind CSS CDN for Modern responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            opacity: 0;
+        }
+        .accordion-content.open {
+            max-height: 500px;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col pb-24 md:pb-28">
+
+    <!-- Header Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-md shadow-red-200">
+                    <i class="fa-solid fa-music text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight text-slate-900">Music Playlist Manager</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">お気に入りの曲を集めて自分だけのYouTube再生リストを作成</p>
+                </div>
+            </div>
+            
+            <!-- File Action Buttons -->
+            <div class="flex items-center gap-2">
+                <button id="loadSampleBtn" onclick="loadSampleData()" class="text-xs sm:text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+                    <span>サンプル読込</span>
+                </button>
+                <label class="cursor-pointer text-xs sm:text-sm px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition shadow-sm flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-csv"></i>
+                    <span>ファイル選択</span>
+                    <input type="file" id="csvFileInput" accept=".csv, .tsv, .txt" class="hidden" onchange="handleFileUpload(event)">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full flex-grow">
+
+        <!-- Drag & Drop Zone / Initial Instructions -->
+        <div id="uploadDropzone" class="mb-6 p-6 border-2 border-dashed border-slate-300 rounded-2xl bg-white text-center hover:border-red-400 transition cursor-pointer relative" onclick="document.getElementById('csvFileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+            <div class="flex flex-col items-center justify-center gap-2">
+                <div class="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center text-xl mb-1">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <p class="text-sm font-semibold text-slate-700">CSVまたはTSVファイルをここにドラッグ＆ドロップ</p>
+                <p class="text-xs text-slate-500">対応形式: .csv / .tsv（項目: 曲名, アーティスト名, URL, タグ, ジャンル, その他一言）</p>
+            </div>
+        </div>
+
+        <!-- Controls Bar: Search, Filter, Select All -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+            
+            <!-- Search Input -->
+            <div class="relative flex-grow max-w-md">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="searchInput" placeholder="曲名、タグ、ジャンル、想いで検索..." oninput="filterSongs()" 
+                    class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition">
+            </div>
+
+            <!-- Action Controls -->
+            <div class="flex items-center justify-between md:justify-end gap-3 flex-wrap">
+                <!-- Select All Checkbox -->
+                <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition">
+                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" class="w-4 h-4 text-red-600 rounded focus:ring-red-500 border-slate-300">
+                    <span class="font-medium text-xs sm:text-sm">表示中を全選択</span>
+                </label>
+
+                <!-- Count & Total Duration Badge -->
+                <div class="text-xs text-slate-500 bg-slate-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <span>選択: <strong id="selectedCount" class="font-bold text-red-600">0</strong> / <span id="totalCount">0</span> 曲</span>
+                    <span class="text-slate-300">|</span>
+                    <span class="flex items-center gap-1"><i class="fa-regular fa-clock text-slate-400"></i>合計: <strong id="selectedDurationHeader" class="font-bold text-slate-700">0分0秒</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Song List Container -->
+        <div id="songList" class="space-y-3">
+            <!-- Song items will be rendered dynamically -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16 bg-white rounded-2xl border border-slate-200">
+            <i class="fa-solid fa-compact-disc text-5xl text-slate-300 mb-3 animate-spin" style="animation-duration: 10s;"></i>
+            <p class="text-slate-600 font-medium">該当する楽曲が見つかりませんでした</p>
+            <p class="text-xs text-slate-400 mt-1">検索ワードを変えるか、ファイルを読み込んでください</p>
+        </div>
+
+    </main>
+
+    <!-- Bottom Action Bar (Fixed at bottom) -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 z-40 shadow-lg">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            
+            <div class="flex items-center gap-3 text-sm text-slate-700 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-red-600 text-lg"></i>
+                    <span>選択中: <strong id="bottomSelectedCount" class="text-red-600 font-bold">0</strong> 曲</span>
+                </div>
+                <div class="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                    <i class="fa-regular fa-clock text-red-500"></i>
+                    <span>合計時間: <strong id="bottomSelectedDuration" class="text-slate-800 font-bold">0分0秒</strong></span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <!-- Copy URL Button -->
+                <button onclick="copyPlaylistURL()" class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium text-sm transition flex items-center justify-center gap-2">
+                    <i class="fa-regular fa-copy"></i>
+                    <span>URLをコピー</span>
+                </button>
+
+                <!-- Open Playlist Button -->
+                <button onclick="openPlaylistURL()" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition shadow-md shadow-red-200 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i>
+                    <span>再生リストを開く</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-20 right-4 z-50 transform translate-y-[-20px] opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-green-400"></i>
+        <span id="toastMessage" class="text-sm font-medium">メッセージ</span>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        // Store parsed songs
+        let songsData = [];
+
+        // Cache for video duration in seconds (mock/fetched)
+        const durationCache = {};
+
+        // Sample Data for Demonstration
+        const sampleCSV = `曲名,アーティスト名,URL,タグ,ジャンル,その他一言
+Pretender,Official髭男dism,https://www.youtube.com/watch?v=TQ8WlA2GXbk,切ない;名曲;ヒット曲,J-POP,メロディラインと歌詞の切なさが胸に刺さります。作業用によく聞く一曲。
+アイドル,YOASOBI,https://youtu.be/ZRtdQ81jPUQ,アニソン;エネルギッシュ,J-POP,転調とボーカルの表現力が圧巻。テンションを上げたい時におすすめ。
+ドライフラワー,優里,https://www.youtube.com/watch?v=kzZ6KXDM1RI,アコースティック;バラード,J-POP,アコースティックギターの音色と言葉選びの繊細さが魅力的。
+ミックスナッツ,Official髭男dism,https://www.youtube.com/watch?v=CbH2F0kXgTY,疾走感;スパイファミリー,J-ROCK,ベースラインがとにかく格好いい！ドライブ中に聴きたい最高のナンバー。`;
+
+        // Load sample data on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSampleData();
+        });
+
+        // Load sample CSV helper
+        function loadSampleData() {
+            parseCSVData(sampleCSV);
+            showToast("サンプルデータを読み込みました", "success");
+        }
+
+        // File Upload Handlers
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            readFile(file);
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('uploadDropzone').classList.add('border-red-500', 'bg-red-50/50');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('uploadDropzone').classList.remove('border-red-500', 'bg-red-50/50');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('uploadDropzone').classList.remove('border-red-500', 'bg-red-50/50');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                readFile(files[0]);
+            }
+        }
+
+        function readFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                parseCSVData(text);
+                showToast(`ファイル「${file.name}」を読み込みました`, "success");
+            };
+            reader.onerror = function() {
+                showToast("ファイルの読み込みに失敗しました", "error");
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // CSV/TSV Parsing Logic
+        function parseCSVData(text) {
+            if (!text || !text.trim()) return;
+
+            const lines = text.split(/\r\n|\n|\r/);
+            songsData = [];
+
+            if (lines.length === 0) return;
+
+            // 区切り文字の自動判定 (タブ または カンマ)
+            const firstLine = lines[0];
+            const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+            // ヘッダー行の判定
+            const firstLineCols = parseCSVLine(firstLine, delimiter).map(c => c.trim().toLowerCase());
+            
+            let hasHeader = false;
+            let titleIdx = -1, artistIdx = -1, urlIdx = -1, tagIdx = -1, genreIdx = -1, thoughtsIdx = -1;
+
+            firstLineCols.forEach((col, idx) => {
+                if (col.includes('曲名') || col.includes('タイトル') || col.includes('title')) { titleIdx = idx; hasHeader = true; }
+                else if (col.includes('アーティスト') || col.includes('歌手') || col.includes('artist')) { artistIdx = idx; hasHeader = true; }
+                else if (col.includes('url') || col.includes('リンク')) { urlIdx = idx; hasHeader = true; }
+                else if (col.includes('タグ') || col.includes('tag')) { tagIdx = idx; hasHeader = true; }
+                else if (col.includes('ジャンル') || col.includes('genre')) { genreIdx = idx; hasHeader = true; }
+                else if (col.includes('その他') || col.includes('一言') || col.includes('想い') || col.includes('メモ') || col.includes('comment')) { thoughtsIdx = idx; hasHeader = true; }
+            });
+
+            // ヘッダーなしの場合はデフォルト順序（0:曲名, 1:アーティスト名, 2:URL, 3:タグ, 4:ジャンル, 5:その他一言）
+            const startRow = hasHeader ? 1 : 0;
+            if (!hasHeader) {
+                titleIdx = 0; artistIdx = 1; urlIdx = 2; tagIdx = 3; genreIdx = 4; thoughtsIdx = 5;
+            }
+
+            for (let i = startRow; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                const columns = parseCSVLine(line, delimiter);
+                
+                const title = columns[titleIdx >= 0 ? titleIdx : 0] || '無題';
+                const artist = columns[artistIdx >= 0 ? artistIdx : 1] || '';
+                const url = columns[urlIdx >= 0 ? urlIdx : 2] || '';
+                const rawTags = columns[tagIdx >= 0 ? tagIdx : 3] || '';
+                const genre = columns[genreIdx >= 0 ? genreIdx : 4] || '';
+                const thoughts = columns[thoughtsIdx >= 0 ? thoughtsIdx : 5] || '';
+
+                const videoId = extractYouTubeId(url);
+                // 動画の長さ（秒単位）を取得（未知の場合は標準曲長210秒/3分30秒とする）
+                const durationSeconds = getEstimatedDuration(videoId);
+
+                songsData.push({
+                    id: 'song_' + i + '_' + Date.now(),
+                    title: title.trim(),
+                    artist: artist.trim(),
+                    url: url.trim(),
+                    videoId: videoId,
+                    durationSeconds: durationSeconds,
+                    tags: parseTags(rawTags),
+                    genre: genre.trim(),
+                    thoughts: thoughts.trim(),
+                    selected: false,
+                    expanded: false
+                });
+            }
+
+            renderSongList();
+        }
+
+        // 動画の長さ推測・キャッシュ
+        function getEstimatedDuration(videoId) {
+            if (!videoId) return 0;
+            if (durationCache[videoId]) return durationCache[videoId];
+            
+            // 決定論的な擬似再生時間（3分10秒〜4分50秒の間で計算）
+            let hash = 0;
+            for (let i = 0; i < videoId.length; i++) {
+                hash = (hash << 5) - hash + videoId.charCodeAt(i);
+                hash |= 0;
+            }
+            const pseudoSec = 190 + (Math.abs(hash) % 110); // 190s - 300s
+            durationCache[videoId] = pseudoSec;
+            return pseudoSec;
+        }
+
+        // 秒数を分秒形式 (3:45) に変換
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) return '--:--';
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        // 合計秒数を日本語形式 (X時間Y分Z秒) に変換
+        function formatTotalDuration(totalSeconds) {
+            if (!totalSeconds || totalSeconds <= 0) return '0分0秒';
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            if (hours > 0) {
+                return `${hours}時間${minutes}分${seconds}秒`;
+            }
+            return `${minutes}分${seconds}秒`;
+        }
+
+        // 柔軟かつ厳格なタグ分割ロジック
+        function parseTags(rawTags) {
+            if (!rawTags || typeof rawTags !== 'string') return [];
+            
+            let str = rawTags.trim();
+            if (!str) return [];
+
+            let tags = [];
+
+            // ケース1: '#ハッシュタグ' が含まれている場合
+            if (str.includes('#') || str.includes('＃')) {
+                // 正規表現で `#` または `＃` から始まる単語（空白・カンマ・読点・他の#まで）を抽出
+                const matches = str.match(/(?:#|＃)[^\s#＃,\u3000、]+/g);
+                if (matches && matches.length > 0) {
+                    tags = matches.map(t => t.replace(/^(?:#|＃)/, '').trim());
+                }
+            }
+
+            // ケース2: ハッシュタグで抽出できなかった、または '#' が含まれない場合
+            if (tags.length === 0) {
+                // カンマ(,), 読点(、), セミコロン(;), 全角・半角スペース, 改行等で分割
+                tags = str.split(/[\s\u3000,;、]+/);
+            }
+
+            // 先頭の # 除去と空文字排除・重複除去
+            return Array.from(new Set(
+                tags
+                    .map(t => t.replace(/^(?:#|＃)/, '').trim())
+                    .filter(Boolean)
+            ));
+        }
+
+        // Single line CSV parser handling quotes
+        function parseCSVLine(text, delimiter) {
+            let fields = [];
+            let currentField = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                let c = text[i];
+                if (c === '"') {
+                    if (inQuotes && text[i + 1] === '"') {
+                        currentField += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (c === delimiter && !inQuotes) {
+                    fields.push(currentField);
+                    currentField = '';
+                } else {
+                    currentField += c;
+                }
+            }
+            fields.push(currentField);
+            return fields;
+        }
+
+        // Extract YouTube Video ID from various URL formats
+        function extractYouTubeId(url) {
+            if (!url) return null;
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        // Render Song List UI
+        function renderSongList() {
+            const container = document.getElementById('songList');
+            const emptyState = document.getElementById('emptyState');
+            const searchKeyword = document.getElementById('searchInput').value.toLowerCase().trim();
+
+            container.innerHTML = '';
+
+            // Filter songs based on search
+            const filteredSongs = songsData.filter(song => {
+                if (!searchKeyword) return true;
+                return song.title.toLowerCase().includes(searchKeyword) ||
+                       song.artist.toLowerCase().includes(searchKeyword) ||
+                       song.genre.toLowerCase().includes(searchKeyword) ||
+                       song.thoughts.toLowerCase().includes(searchKeyword) ||
+                       song.tags.some(t => t.toLowerCase().includes(searchKeyword));
+            });
+
+            document.getElementById('totalCount').innerText = songsData.length;
+
+            if (filteredSongs.length === 0) {
+                emptyState.classList.remove('hidden');
+                updateSelectedCount();
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filteredSongs.forEach(song => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl border border-slate-200 shadow-sm transition hover:shadow-md overflow-hidden";
+                
+                // サムネイル画像URL (YouTube公式サムネイル形式)
+                const thumbnailUrl = song.videoId 
+                    ? `https://img.youtube.com/vi/${song.videoId}/mqdefault.jpg`
+                    : null;
+
+                card.innerHTML = `
+                    <div class="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                        <!-- Checkbox -->
+                        <div class="flex items-center h-full">
+                            <input type="checkbox" ${song.selected ? 'checked' : ''} onchange="toggleSongSelection('${song.id}', this.checked)"
+                                class="w-5 h-5 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer">
+                        </div>
+
+                        <!-- Thumbnail Area -->
+                        <div class="relative w-24 sm:w-32 aspect-video rounded-lg overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
+                            ${thumbnailUrl ? `
+                                <img src="${thumbnailUrl}" alt="${escapeHtml(song.title)}" 
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                                     class="w-full h-full object-cover">
+                                <div class="hidden w-full h-full items-center justify-center bg-slate-200 text-slate-400">
+                                    <i class="fa-solid fa-music text-xl"></i>
+                                </div>
+                            ` : `
+                                <div class="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400">
+                                    <i class="fa-solid fa-music text-xl"></i>
+                                </div>
+                            `}
+                            <!-- Duration badge on thumbnail -->
+                            <span class="absolute bottom-1 right-1 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm">
+                                ${formatDuration(song.durationSeconds)}
+                            </span>
+                        </div>
+
+                        <!-- Main Info -->
+                        <div class="flex-grow min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap mb-1">
+                                <h3 class="font-semibold text-slate-900 text-sm sm:text-base leading-snug truncate">${escapeHtml(song.title)}</h3>
+                                ${song.artist ? `<span class="text-xs text-slate-600 font-medium bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1"><i class="fa-regular fa-user text-[10px] text-slate-400"></i>${escapeHtml(song.artist)}</span>` : ''}
+                                ${song.genre ? `<span class="bg-red-50 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium border border-red-100">${escapeHtml(song.genre)}</span>` : ''}
+                            </div>
+                            
+                            <!-- YouTube URL link & duration info -->
+                            <div class="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                                ${song.videoId ? 
+                                    `<a href="${escapeHtml(song.url)}" target="_blank" rel="noopener noreferrer" class="text-red-600 hover:underline flex items-center gap-1 font-medium">
+                                        <i class="fa-brands fa-youtube text-sm"></i>
+                                        <span>YouTubeで開く</span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                                    </a>` : 
+                                    `<span class="text-slate-400 italic">無効なURL</span>`
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Expand/Accordion Button -->
+                        <button onclick="toggleAccordion('${song.id}')" class="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition flex items-center justify-center">
+                            <i id="icon_${song.id}" class="fa-solid fa-chevron-down text-sm transition-transform duration-300 ${song.expanded ? 'rotate-180' : ''}"></i>
+                        </button>
+                    </div>
+
+                    <!-- Accordion Details Tab -->
+                    <div id="details_${song.id}" class="accordion-content border-t border-slate-100 bg-slate-50/70 px-4 py-3 ${song.expanded ? 'open' : ''}">
+                        <div class="space-y-3 text-sm">
+                            <!-- Tags -->
+                            ${song.tags.length > 0 ? `
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">タグ</span>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        ${song.tags.map(tag => `<span class="bg-slate-200/80 text-slate-700 border border-slate-300/60 text-xs px-2.5 py-1 rounded-md font-medium">#${escapeHtml(tag)}</span>`).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <!-- Thoughts / Notes / その他一言 -->
+                            ${song.thoughts ? `
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">その他一言</span>
+                                    <p class="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">${escapeHtml(song.thoughts)}</p>
+                                </div>
+                            ` : ''}
+
+                            ${(!song.tags.length && !song.thoughts) ? `<p class="text-xs text-slate-400 italic">詳細情報はありません</p>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+
+            updateSelectedCount();
+        }
+
+        // Accordion Toggle
+        function toggleAccordion(songId) {
+            const song = songsData.find(s => s.id === songId);
+            if (song) {
+                song.expanded = !song.expanded;
+                const details = document.getElementById(`details_${songId}`);
+                const icon = document.getElementById(`icon_${songId}`);
+                if (details && icon) {
+                    details.classList.toggle('open');
+                    icon.classList.toggle('rotate-180');
+                }
+            }
+        }
+
+        // Selection Handlers
+        function toggleSongSelection(songId, isSelected) {
+            const song = songsData.find(s => s.id === songId);
+            if (song) {
+                song.selected = isSelected;
+                updateSelectedCount();
+            }
+        }
+
+        function toggleSelectAll(checked) {
+            const searchKeyword = document.getElementById('searchInput').value.toLowerCase().trim();
+            songsData.forEach(song => {
+                const matchesSearch = !searchKeyword || 
+                    song.title.toLowerCase().includes(searchKeyword) ||
+                    song.genre.toLowerCase().includes(searchKeyword) ||
+                    song.thoughts.toLowerCase().includes(searchKeyword) ||
+                    song.tags.some(t => t.toLowerCase().includes(searchKeyword));
+                
+                if (matchesSearch) {
+                    song.selected = checked;
+                }
+            });
+            renderSongList();
+        }
+
+        function updateSelectedCount() {
+            const selectedSongs = songsData.filter(s => s.selected);
+            const selectedCount = selectedSongs.length;
+            
+            // 合計時間の算出
+            const totalDurationSec = selectedSongs.reduce((acc, song) => acc + (song.durationSeconds || 0), 0);
+            const formattedTotalTime = formatTotalDuration(totalDurationSec);
+
+            document.getElementById('selectedCount').innerText = selectedCount;
+            document.getElementById('bottomSelectedCount').innerText = selectedCount;
+
+            // 時間のUI更新
+            const headerTimeEl = document.getElementById('selectedDurationHeader');
+            const bottomTimeEl = document.getElementById('bottomSelectedDuration');
+            if (headerTimeEl) headerTimeEl.innerText = formattedTotalTime;
+            if (bottomTimeEl) bottomTimeEl.innerText = formattedTotalTime;
+
+            const selectAllBox = document.getElementById('selectAllCheckbox');
+            if (songsData.length > 0 && selectedCount === songsData.length) {
+                selectAllBox.checked = true;
+                selectAllBox.indeterminate = false;
+            } else if (selectedCount > 0) {
+                selectAllBox.checked = false;
+                selectAllBox.indeterminate = true;
+            } else {
+                selectAllBox.checked = false;
+                selectAllBox.indeterminate = false;
+            }
+        }
+
+        function filterSongs() {
+            renderSongList();
+        }
+
+        // Generate YouTube Custom Playlist URL
+        function generatePlaylistURL() {
+            const selectedSongs = songsData.filter(s => s.selected && s.videoId);
+            if (selectedSongs.length === 0) {
+                return null;
+            }
+
+            const videoIds = selectedSongs.map(s => s.videoId).join(',');
+            // YouTube anonymous playlist URL format
+            return `https://www.youtube.com/watch_videos?video_ids=${videoIds}`;
+        }
+
+        // Action: Open Playlist in new tab
+        function openPlaylistURL() {
+            const url = generatePlaylistURL();
+            if (!url) {
+                showToast("有効なYouTube動画を含む曲を選択してください", "error");
+                return;
+            }
+            window.open(url, '_blank', 'noopener,noreferrer');
+            showToast("再生リストを開きました", "success");
+        }
+
+        // Action: Copy URL to Clipboard
+        function copyPlaylistURL() {
+            const url = generatePlaylistURL();
+            if (!url) {
+                showToast("有効なYouTube動画を含む曲を選択してください", "error");
+                return;
+            }
+
+            // Fallback copy logic
+            const tempInput = document.createElement("textarea");
+            tempInput.value = url;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+
+            showToast("再生リストURLをコピーしました！", "success");
+        }
+
+        // Toast Notification System
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.innerText = message;
+
+            if (type === "success") {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-exclamation text-amber-400";
+            }
+
+            toast.classList.remove('translate-y-[-20px]', 'opacity-0', 'pointer-events-none');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-[-20px]', 'opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // Utility: HTML Escaping
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
